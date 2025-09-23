@@ -2,6 +2,8 @@
 
 **DocSnap** is a tool to create API documentation from your Postman collections. You can import collections using a UID or upload your own JSON. The documentation can then be exported as a PDF, making it easy to share.
 
+**LINK:** https://docsnap-ttyn.vercel.app/
+
 ## Features
 
 - **Import Postman Collection**: You can import Postman collections by using a collection UID.
