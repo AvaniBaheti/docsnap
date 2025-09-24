@@ -5,43 +5,41 @@ import { NextResponse } from 'next/server';
 export async function POST(req: NextRequest) {
   try {
     const { responseData } = await req.json();
-    console.log("Received responseData:", JSON.stringify(responseData, null, 2));
-
     if (!responseData || !responseData.items || responseData.items.length === 0) {
       throw new Error('No items found in responseData');
     }
 
     const doc = new jsPDF();
 
-    // Color definitions
-    const colors = {
-      primary: [41, 128, 185] as [number, number, number],
-      success: [39, 174, 96] as [number, number, number],
-      warning: [243, 156, 18] as [number, number, number],
-      danger: [231, 76, 60] as [number, number, number],
-      dark: [52, 73, 94] as [number, number, number],
-      light: [149, 165, 166] as [number, number, number],
-      background: [236, 240, 241] as [number, number, number],
-      lightGreen: [240, 255, 240] as [number, number, number],
-      lightGray: [248, 249, 250] as [number, number, number]
+    const colors: {
+      primary: [number, number, number],
+      success: [number, number, number],
+      warning: [number, number, number],
+      danger: [number, number, number],
+      dark: [number, number, number],
+      light: [number, number, number],
+      background: [number, number, number],
+      lightGreen: [number, number, number],
+      lightGray: [number, number, number],
+    } = {
+      primary: [41, 128, 185],
+      success: [39, 174, 96],
+      warning: [243, 156, 18],
+      danger: [231, 76, 60],
+      dark: [52, 73, 94],
+      light: [149, 165, 166],
+      background: [236, 240, 241],
+      lightGreen: [240, 255, 240],
+      lightGray: [248, 249, 250]
     };
 
     const pageWidth = 210;
     const margin = 15;
     const contentWidth = pageWidth - margin * 2;
     const footerHeight = 15;
-    const maxContentHeight = 270; // Safe content area
+    const maxContentHeight = 270;
 
     let yPosition = 20;
-
-    const checkNewPage = (requiredSpace: number) => {
-      if (yPosition + requiredSpace > maxContentHeight) {
-        doc.addPage();
-        yPosition = 20;
-        return true;
-      }
-      return false;
-    };
 
     const wrapText = (text: string, maxWidth: number, fontSize: number = 10) => {
       doc.setFontSize(fontSize);
@@ -50,12 +48,33 @@ export async function POST(req: NextRequest) {
     };
 
     const drawSection = (x: number, y: number, width: number, height: number, fillColor: [number, number, number]) => {
-      doc.setFillColor(...fillColor);
+      doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
       doc.rect(x, y, width, height, 'F');
     };
 
-    // Header
-    doc.setFillColor(...colors.primary);
+    const addNewPageIfNeeded = (requiredSpace: number) => {
+      if (yPosition + requiredSpace > maxContentHeight) {
+        doc.addPage();
+        yPosition = 20;
+      }
+    };
+
+    const addTextWithPageBreak = (lines: string[], startY: number, lineHeight: number, leftMargin: number) => {
+      let currentY = startY;
+      
+      lines.forEach((line: string) => {
+        if (currentY + lineHeight > maxContentHeight) {
+          doc.addPage();
+          currentY = 20;
+        }
+        doc.text(line, leftMargin, currentY);
+        currentY += lineHeight;
+      });
+      
+      return currentY;
+    };
+
+    doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
     doc.rect(0, 0, pageWidth, 35, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(24);
@@ -65,34 +84,28 @@ export async function POST(req: NextRequest) {
     yPosition = 50;
 
     responseData.items.forEach((item: any, index: number) => {
-      console.log(`Processing Item ${index + 1}:`);
-
-      // Request header
-      checkNewPage(35);
+      addNewPageIfNeeded(35);
       drawSection(margin - 5, yPosition - 8, contentWidth + 10, 16, colors.background);
-      doc.setTextColor(...colors.dark);
+      doc.setTextColor(colors.dark[0], colors.dark[1], colors.dark[2]);
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
       doc.text(`[${index + 1}] Request: ${item.name || 'Unnamed Request'}`, margin, yPosition);
       yPosition += 25;
 
-      // Method and URL section
-      checkNewPage(25);
+      addNewPageIfNeeded(25);
 
-      // Method badge
       const methodColor = item.method === 'GET' ? colors.success :
                          item.method === 'POST' ? colors.primary :
                          item.method === 'PUT' ? colors.warning : colors.danger;
 
-      doc.setFillColor(...methodColor);
+      doc.setFillColor(methodColor[0], methodColor[1], methodColor[2]);
       doc.rect(margin, yPosition - 5, 32, 10, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
       doc.text(item.method, margin + 3, yPosition);
 
-      // URL
-      doc.setTextColor(...colors.dark);
+      doc.setTextColor(colors.dark[0], colors.dark[1], colors.dark[2]);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       const urlText = `URL: ${item.url}`;
@@ -103,31 +116,27 @@ export async function POST(req: NextRequest) {
       });
       yPosition += Math.max(15, urlLines.length * 4) + 10;
 
-      // Headers section
       if (item.headers && item.headers.length > 0) {
-        checkNewPage(30);
+        addNewPageIfNeeded(30);
 
-        doc.setTextColor(...colors.primary);
+        doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(12);
         doc.text('Headers:', margin, yPosition);
         yPosition += 12;
 
-        let headersHeight = 15; // Base height
+        let headersHeight = 15;
         item.headers.forEach((header: { key: any; value: any; }) => {
           const keyLines = wrapText(header.key, 45, 9);
           const valueLines = wrapText(header.value, contentWidth - 55, 9);
           headersHeight += Math.max(keyLines.length, valueLines.length) * 4 + 5;
         });
 
-        if (yPosition + headersHeight > maxContentHeight) {
-          doc.addPage();
-          yPosition = 20;
-        }
+        addNewPageIfNeeded(headersHeight);
 
         drawSection(margin, yPosition - 5, contentWidth, headersHeight, [252, 252, 252]);
 
-        doc.setTextColor(...colors.primary);
+        doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
         doc.text('Header Name', margin + 5, yPosition + 5);
@@ -142,12 +151,18 @@ export async function POST(req: NextRequest) {
           const valueLines = wrapText(header.value, contentWidth - 55, 9);
           const maxLines = Math.max(keyLines.length, valueLines.length);
 
-          doc.setTextColor(...colors.primary);
+          // Check if we need a new page for this header
+          if (yPosition + (maxLines * 4 + 5) > maxContentHeight) {
+            doc.addPage();
+            yPosition = 20;
+          }
+
+          doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
           keyLines.forEach((keyLine: string, keyIndex: number) => {
             doc.text(keyLine, margin + 5, yPosition + (keyIndex * 4));
           });
 
-          doc.setTextColor(...colors.dark);
+          doc.setTextColor(colors.dark[0], colors.dark[1], colors.dark[2]);
           valueLines.forEach((valueLine: string, valueIndex: number) => {
             doc.text(valueLine, margin + 55, yPosition + (valueIndex * 4));
           });
@@ -157,11 +172,10 @@ export async function POST(req: NextRequest) {
         yPosition += 10;
       }
 
-      // Request Body
       if (item.body && item.body.raw) {
-        checkNewPage(30);
+        addNewPageIfNeeded(30);
 
-        doc.setTextColor(...colors.primary);
+        doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(12);
         doc.text('Request Body:', margin, yPosition);
@@ -169,28 +183,26 @@ export async function POST(req: NextRequest) {
 
         const rawBody = item.body.raw.replace(/\\n/g, '\n');
         const bodyLines = wrapText(rawBody, contentWidth - 20, 10);
-        const bodyHeight = bodyLines.length * 5 + 15;
 
-        if (yPosition + bodyHeight > maxContentHeight) {
-          doc.addPage();
-          yPosition = 20;
-        }
-
-        drawSection(margin, yPosition - 5, contentWidth, bodyHeight, colors.lightGray);
-
-        doc.setTextColor(...colors.dark);
+        doc.setTextColor(colors.dark[0], colors.dark[1], colors.dark[2]);
         doc.setFont('courier', 'normal');
         doc.setFontSize(10);
 
-        bodyLines.forEach((line: string, lineIndex: number) => {
-          doc.text(line, margin + 8, yPosition + (lineIndex * 5));
+        // Process body lines with automatic page breaks
+        let currentBodyY = yPosition;
+        bodyLines.forEach((line: string) => {
+          if (currentBodyY + 5 > maxContentHeight) {
+            doc.addPage();
+            currentBodyY = 20;
+          }
+          doc.text(line, margin + 8, currentBodyY);
+          currentBodyY += 5;
         });
-        yPosition += bodyHeight + 10;
+        yPosition = currentBodyY + 10;
       }
 
-      // Response
       if (item.response && item.response.length > 0) {
-        checkNewPage(40);
+        addNewPageIfNeeded(40);
 
         drawSection(margin - 5, yPosition - 8, contentWidth + 10, 16, colors.success);
         doc.setTextColor(255, 255, 255);
@@ -201,26 +213,26 @@ export async function POST(req: NextRequest) {
 
         const firstResponse = item.response[0];
         if (firstResponse) {
-          checkNewPage(30);
+          addNewPageIfNeeded(30);
 
           const statusColor = firstResponse.code < 300 ? colors.success :
                              firstResponse.code < 400 ? colors.warning : colors.danger;
 
-          doc.setFillColor(...statusColor);
+          doc.setFillColor(statusColor[0], statusColor[1], statusColor[2]);
           doc.rect(margin, yPosition - 5, 35, 10, 'F');
           doc.setTextColor(255, 255, 255);
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(10);
           doc.text(`${firstResponse.code}`, margin + 3, yPosition);
 
-          doc.setTextColor(...colors.dark);
+          doc.setTextColor(colors.dark[0], colors.dark[1], colors.dark[2]);
           doc.setFont('helvetica', 'normal');
           doc.setFontSize(10);
           doc.text(`Status: ${firstResponse.status}`, margin + 40, yPosition);
           yPosition += 20;
 
           if (firstResponse.body) {
-            doc.setTextColor(...colors.success);
+            doc.setTextColor(colors.success[0], colors.success[1], colors.success[2]);
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(12);
             doc.text('Response Body:', margin, yPosition);
@@ -228,46 +240,38 @@ export async function POST(req: NextRequest) {
 
             const responseBody = firstResponse.body.replace(/\\n/g, '\n');
             const responseLines = wrapText(responseBody, contentWidth - 15, 11);
-            const responseHeight = responseLines.length * 5 + 15;
 
-            if (yPosition + responseHeight > maxContentHeight) {
-              doc.addPage();
-              yPosition = 20;
-              doc.setTextColor(...colors.success);
-              doc.setFont('helvetica', 'bold');
-              doc.setFontSize(12);
-              doc.text('Response Body:', margin, yPosition);
-              yPosition += 12;
-            }
-
-            drawSection(margin, yPosition - 5, contentWidth, responseHeight, colors.lightGreen);
-
-            doc.setTextColor(...colors.dark);
+            doc.setTextColor(colors.dark[0], colors.dark[1], colors.dark[2]);
             doc.setFont('courier', 'normal');
             doc.setFontSize(10);
 
-            responseLines.forEach((line: string, lineIndex: number) => {
-              doc.text(line, margin + 8, yPosition + (lineIndex * 5));
+            // Process response lines with automatic page breaks
+            let currentResponseY = yPosition;
+            responseLines.forEach((line: string) => {
+              if (currentResponseY + 5 > maxContentHeight) {
+                doc.addPage();
+                currentResponseY = 20;
+              }
+              doc.text(line, margin + 8, currentResponseY);
+              currentResponseY += 5;
             });
-            yPosition += responseHeight + 18;
+            yPosition = currentResponseY + 18;
           }
         }
       }
 
-      // Separator between requests
       if (index < responseData.items.length - 1) {
-        checkNewPage(20);
-        doc.setDrawColor(...colors.light);
+        addNewPageIfNeeded(20);
+        doc.setDrawColor(colors.light[0], colors.light[1], colors.light[2]);
         doc.line(margin, yPosition, pageWidth - margin, yPosition);
         yPosition += 20;
       }
     });
 
-    // Footers on all pages
     const pageCount = (doc as any).internal.pages.length - 1;
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
-      doc.setFillColor(...colors.primary);
+      doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
       doc.rect(0, 282, pageWidth, 15, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(10);

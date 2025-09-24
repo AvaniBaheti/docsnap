@@ -1,6 +1,5 @@
-// next.config.js
-module.exports = {
+export default {
   eslint: {
-    ignoreDuringBuilds: true,  // Ignore linting during build
+    ignoreDuringBuilds: true,  
   },
 }
