@@ -22,6 +22,9 @@ export default function Home() {
   const [err, setErr] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  const [descriptions, setDescriptions] = useState<Record<string, string>>({});
+  const [loadingDescriptions, setLoadingDescriptions] = useState<Record<string, boolean>>({});
+  const [activeTab, setActiveTab] = useState<Record<string, string>>({});
 
   async function importByUid(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -57,7 +60,7 @@ export default function Home() {
     const res = await fetch("/api/export/pdf", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ responseData: doc }), // Send the response data to the server
+      body: JSON.stringify({ responseData: doc, descriptions }), // Include descriptions in PDF export
     });
   
     if (res.ok) {
@@ -70,7 +73,35 @@ export default function Home() {
       alert("Failed to export PDF");
     }
   };
-  
+
+  const generateDescription = async (request: DocRequest) => {
+    setLoadingDescriptions(prev => ({ ...prev, [request.id]: true }));
+    
+    try {
+      const res = await fetch('/api/generate-description', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          endpoint: request.url,
+          method: request.method,
+          requestBody: request.body?.raw ? JSON.parse(request.body.raw) : null,
+          responseData: request.response?.[0] ? JSON.parse(request.response[0].body) : null
+        }),
+      });
+
+      const data = await res.json();
+      if (data.description) {
+        setDescriptions(prev => ({ ...prev, [request.id]: data.description }));
+        setActiveTab(prev => ({ ...prev, [request.id]: 'description' }));
+      }
+    } catch (error) {
+      console.error('Error generating description:', error);
+    } finally {
+      setLoadingDescriptions(prev => ({ ...prev, [request.id]: false }));
+    }
+  };
 
   const grouped = useMemo(() => {
     if (!doc) return {} as Record<string, DocRequest[]>;
@@ -185,6 +216,7 @@ export default function Home() {
 
                     {items.map((r) => {
                       const open = openId === r.id;
+                      const currentTab = activeTab[r.id] || 'details';
                       return (
                         <article
                           key={r.id}
@@ -215,180 +247,230 @@ export default function Home() {
 
                           {open && (
                             <div className="px-4 pb-4">
-                              {/* Description */}
-                              {r.description && (
-                                <p className="whitespace-pre-wrap rounded bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                                  {r.description}
-                                </p>
-                              )}
+                              {/* Generate Description Button */}
+                              <div className="mb-4 flex justify-end">
+                                <button
+                                  onClick={() => generateDescription(r)}
+                                  disabled={loadingDescriptions[r.id]}
+                                  className="rounded bg-green-500 px-3 py-1 text-sm text-white transition hover:bg-green-600 disabled:opacity-50"
+                                >
+                                  {loadingDescriptions[r.id] ? 'Generating...' : 'Generate AI Description'}
+                                </button>
+                              </div>
 
-                              {/* Path Vars */}
-                              {r.pathVariables && Object.keys(r.pathVariables).length > 0 && (
-                                <div className="mt-12">
-                                  <h4 className="text-sm font-medium">Path Variables</h4>
-                                  <table className="mt-1 w-full text-sm">
-                                    <thead>
-                                      <tr className="text-left text-gray-500">
-                                        <th className="py-1">Key</th>
-                                        <th>Value</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {Object.entries(r.pathVariables).map(([k, v]) => (
-                                        <tr key={k} className="border-t">
-                                          <td className="py-1 align-top">
-                                            <code>{k}</code>
-                                          </td>
-                                          <td className="align-top">{String(v ?? "")}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              )}
+                              {/* Tab Navigation */}
+                              <div className="border-b mb-4">
+                                <nav className="flex space-x-4">
+                                  <button
+                                    onClick={() => setActiveTab(prev => ({ ...prev, [r.id]: 'details' }))}
+                                    className={`py-2 px-4 border-b-2 font-medium text-sm ${
+                                      currentTab === 'details'
+                                        ? 'border-blue-500 text-blue-600'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                                    }`}
+                                  >
+                                    API Details
+                                  </button>
+                                  {descriptions[r.id] && (
+                                    <button
+                                      onClick={() => setActiveTab(prev => ({ ...prev, [r.id]: 'description' }))}
+                                      className={`py-2 px-4 border-b-2 font-medium text-sm ${
+                                        currentTab === 'description'
+                                          ? 'border-blue-500 text-blue-600'
+                                          : 'border-transparent text-gray-500 hover:text-gray-700'
+                                      }`}
+                                    >
+                                      AI Description
+                                    </button>
+                                  )}
+                                </nav>
+                              </div>
 
-                              {/* Query */}
-                              {r.query?.length ? (
-                                <div className="mt-3">
-                                  <h4 className="text-sm font-medium">Query Params</h4>
-                                  <table className="mt-1 w-full text-sm">
-                                    <thead>
-                                      <tr className="text-left text-gray-500">
-                                        <th className="py-1">Key</th>
-                                        <th className="px-4">Value</th>
-                                        <th>Description</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {r.query.map((p) => (
-                                        <tr key={p.key} className="border-t">
-                                          <td className="py-1 align-top">
-                                            <code>{p.key}</code>
-                                          </td>
-                                          <td className="align-top break-all px-4">{p.value ?? ""}</td>
-                                          <td className="align-top">{p.description ?? ""}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              ) : null}
-
-                              {/* Headers */}
-                              {r.headers?.length ? (
-                                <div className="mt-12">
-                                  <h4 className="text-sm font-semibold">Headers</h4>
-                                  <table className="mt-1 w-full text-sm">
-                                    <thead>
-                                      <tr className="text-left text-gray-500">
-                                        <th className="py-1">Header</th>
-                                        <th className="px-4">Value</th>
-                                        <th>Description</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {r.headers.map((h) => (
-                                        <tr key={h.key} className="border-t bg-gray-100 hover:bg-gray-200">
-                                          <td className="py-1 align-top">
-                                            <code>{h.key}</code>
-                                          </td>
-                                          <td className="align-top break-all px-4">{h.value ?? ""}</td>
-                                          <td className="align-top">{h.description ?? ""}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              ) : null}
-
-                              {/* Body */}
-                              {r.body?.mode && (
-                                <div className="mt-12">
-                                  <h4 className="text-sm font-semibold">Body ({r.body.mode})</h4>
-                                  {r.body.mode === "raw" && r.body.raw ? (
-                                    <pre className="mt-1 max-h-80 overflow-auto rounded border bg-gray-50 p-3 text-xs">
-                                      {r.body.raw}
-                                    </pre>
-                                  ) : null}
-                                  {r.body.mode === "urlencoded" && r.body.urlencoded?.length ? (
-                                    <table className="mt-1 w-full text-sm">
-                                      <thead>
-                                        <tr className="text-left text-gray-500">
-                                          <th className="py-1">Key</th>
-                                          <th className="px-4">Value</th>
-                                          <th>Description</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {r.body.urlencoded.map((p) => (
-                                          <tr key={p.key} className="border-t">
-                                            <td className="py-1 align-top">
-                                              <code>{p.key}</code>
-                                            </td>
-                                            <td className="align-top break-all px-4">{p.value ?? ""}</td>
-                                            <td className="align-top">{p.description ?? ""}</td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  ) : null}
-                                  {r.body.mode === "formdata" && r.body.formdata?.length ? (
-                                    <table className="mt-1 w-full text-sm">
-                                      <thead>
-                                        <tr className="text-left text-gray-500">
-                                          <th className="py-1">Key</th>
-                                          <th className="px-4">Value</th>
-                                          <th>Description</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {r.body.formdata.map((p) => (
-                                          <tr key={p.key} className="border-t">
-                                            <td className="py-1 align-top">
-                                              <code>{p.key}</code>
-                                            </td>
-                                            <td className="align-top break-all px-4">{p.value ?? ""}</td>
-                                            <td className="align-top">{p.description ?? ""}</td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  ) : null}
-                                </div>
-                              )}
-
-                              {/* Response */}
-                              {r.response?.length ? (
-                                <div className="mt-12">
-                                  <h4 className="text-sm font-semibold">Response</h4>
-                                  {r.response.map((resp, index) => {
-                                    // Parse the response body (which is a string) into an object
-                                    let parsedBody: Record<string, any> = {};
-                                    try {
-                                      parsedBody = JSON.parse(resp.body);  // Parse the body string into a JavaScript object
-                                    } catch (error) {
-                                      console.error('Error parsing response body:', error);
-                                    }
-
-                                    // Convert the parsed object back into a JSON string with pretty print
-                                    const jsonDisplay = JSON.stringify(parsedBody, null, 2); // The `null, 2` adds indentation for readability
-
-                                    return (
-                                      <div key={index} className="border-t mt-2 pt-2">
-                                        <h5 className="font-medium">Response {index + 1}</h5>
-
-                                        {/* Display the JSON object as a string */}
-                                        <div className="response-container">
-                                          <pre className="bg-gray-50 p-3 text-xs overflow-auto whitespace-pre-wrap">{jsonDisplay}</pre>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
+                              {/* Tab Content */}
+                              {currentTab === 'description' && descriptions[r.id] ? (
+                                <div className="bg-blue-50 border border-blue-200 p-4 rounded">
+                                  <h4 className="text-sm font-semibold mb-2">AI Generated Description</h4>
+                                  <div className="whitespace-pre-wrap text-gray-800">
+                                    {descriptions[r.id]}
+                                  </div>
                                 </div>
                               ) : (
-                                <div>No response data available</div>
-                              )}
+                                <div>
+                                  {/* Description */}
+                                  {r.description && (
+                                    <p className="whitespace-pre-wrap rounded bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                                      {r.description}
+                                    </p>
+                                  )}
 
+                                  {/* Path Vars */}
+                                  {r.pathVariables && Object.keys(r.pathVariables).length > 0 && (
+                                    <div className="mt-12">
+                                      <h4 className="text-sm font-medium">Path Variables</h4>
+                                      <table className="mt-1 w-full text-sm">
+                                        <thead>
+                                          <tr className="text-left text-gray-500">
+                                            <th className="py-1">Key</th>
+                                            <th>Value</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {Object.entries(r.pathVariables).map(([k, v]) => (
+                                            <tr key={k} className="border-t">
+                                              <td className="py-1 align-top">
+                                                <code>{k}</code>
+                                              </td>
+                                              <td className="align-top">{String(v ?? "")}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
+
+                                  {/* Query */}
+                                  {r.query?.length ? (
+                                    <div className="mt-3">
+                                      <h4 className="text-sm font-medium">Query Params</h4>
+                                      <table className="mt-1 w-full text-sm">
+                                        <thead>
+                                          <tr className="text-left text-gray-500">
+                                            <th className="py-1">Key</th>
+                                            <th className="px-4">Value</th>
+                                            <th>Description</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {r.query.map((p) => (
+                                            <tr key={p.key} className="border-t">
+                                              <td className="py-1 align-top">
+                                                <code>{p.key}</code>
+                                              </td>
+                                              <td className="align-top break-all px-4">{p.value ?? ""}</td>
+                                              <td className="align-top">{p.description ?? ""}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  ) : null}
+
+                                  {/* Headers */}
+                                  {r.headers?.length ? (
+                                    <div className="mt-12">
+                                      <h4 className="text-sm font-semibold">Headers</h4>
+                                      <table className="mt-1 w-full text-sm">
+                                        <thead>
+                                          <tr className="text-left text-gray-500">
+                                            <th className="py-1">Header</th>
+                                            <th className="px-4">Value</th>
+                                            <th>Description</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {r.headers.map((h) => (
+                                            <tr key={h.key} className="border-t bg-gray-100 hover:bg-gray-200">
+                                              <td className="py-1 align-top">
+                                                <code>{h.key}</code>
+                                              </td>
+                                              <td className="align-top break-all px-4">{h.value ?? ""}</td>
+                                              <td className="align-top">{h.description ?? ""}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  ) : null}
+
+                                  {/* Body */}
+                                  {r.body?.mode && (
+                                    <div className="mt-12">
+                                      <h4 className="text-sm font-semibold">Body ({r.body.mode})</h4>
+                                      {r.body.mode === "raw" && r.body.raw ? (
+                                        <pre className="mt-1 max-h-80 overflow-auto rounded border bg-gray-50 p-3 text-xs">
+                                          {r.body.raw}
+                                        </pre>
+                                      ) : null}
+                                      {r.body.mode === "urlencoded" && r.body.urlencoded?.length ? (
+                                        <table className="mt-1 w-full text-sm">
+                                          <thead>
+                                            <tr className="text-left text-gray-500">
+                                              <th className="py-1">Key</th>
+                                              <th className="px-4">Value</th>
+                                              <th>Description</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {r.body.urlencoded.map((p) => (
+                                              <tr key={p.key} className="border-t">
+                                                <td className="py-1 align-top">
+                                                  <code>{p.key}</code>
+                                                </td>
+                                                <td className="align-top break-all px-4">{p.value ?? ""}</td>
+                                                <td className="align-top">{p.description ?? ""}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      ) : null}
+                                      {r.body.mode === "formdata" && r.body.formdata?.length ? (
+                                        <table className="mt-1 w-full text-sm">
+                                          <thead>
+                                            <tr className="text-left text-gray-500">
+                                              <th className="py-1">Key</th>
+                                              <th className="px-4">Value</th>
+                                              <th>Description</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {r.body.formdata.map((p) => (
+                                              <tr key={p.key} className="border-t">
+                                                <td className="py-1 align-top">
+                                                  <code>{p.key}</code>
+                                                </td>
+                                                <td className="align-top break-all px-4">{p.value ?? ""}</td>
+                                                <td className="align-top">{p.description ?? ""}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      ) : null}
+                                    </div>
+                                  )}
+
+                                  {/* Response */}
+                                  {r.response?.length ? (
+                                    <div className="mt-12">
+                                      <h4 className="text-sm font-semibold">Response</h4>
+                                      {r.response.map((resp, index) => {
+                                        // Parse the response body (which is a string) into an object
+                                        let parsedBody: Record<string, any> = {};
+                                        try {
+                                          parsedBody = JSON.parse(resp.body);  // Parse the body string into a JavaScript object
+                                        } catch (error) {
+                                          console.error('Error parsing response body:', error);
+                                        }
+
+                                        // Convert the parsed object back into a JSON string with pretty print
+                                        const jsonDisplay = JSON.stringify(parsedBody, null, 2); // The `null, 2` adds indentation for readability
+
+                                        return (
+                                          <div key={index} className="border-t mt-2 pt-2">
+                                            <h5 className="font-medium">Response {index + 1}</h5>
+
+                                            {/* Display the JSON object as a string */}
+                                            <div className="response-container">
+                                              <pre className="bg-gray-50 p-3 text-xs overflow-auto whitespace-pre-wrap">{jsonDisplay}</pre>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <div>No response data available</div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           )}
                         </article>
