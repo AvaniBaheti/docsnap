@@ -1,5 +1,5 @@
-// Fixed version with proper rate limiting and error handling
 import { NextRequest, NextResponse } from 'next/server';
+import { encode } from '@toon-format/toon'; 
 
 // Retry function with exponential backoff
 async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3): Promise<Response> {
@@ -41,11 +41,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+
+    const requestToon = encode(requestBody);
+    const responseToon = encode(responseData);
+
+    console.log('JSON length:', JSON.stringify(requestBody, null, 2).length,  JSON.stringify(requestBody, null, 2));
+    console.log('TOON length:', requestToon.length, requestToon);
+
     const prompt = `Generate a comprehensive description for this API endpoint:
 
 Endpoint: ${method} ${endpoint}
-Request Body: ${JSON.stringify(requestBody, null, 2)}
-Response Data: ${JSON.stringify(responseData, null, 2)}
+
+Request Body (TOON format):
+\`\`\`toon
+${requestToon}
+\`\`\`
+
+Response Data (TOON format):
+\`\`\`toon
+${responseToon}
+\`\`\`
 
 Please provide:
 1. A brief overview of what this API endpoint does
@@ -99,7 +114,6 @@ Keep the description professional, clear, and concise (around 200-300 words).`;
   } catch (error) {
     console.error('Error generating description:', error);
     
-    // Handle specific error types
     if (error instanceof Error) {
       if (error.message.includes('429') || error.message.includes('Rate limit')) {
         return NextResponse.json(
